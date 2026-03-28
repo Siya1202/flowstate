@@ -1,16 +1,36 @@
-fastapi
-uvicorn
-sqlalchemy
-alembic
-psycopg2-binary
-chromadb
-redis
-sentence-transformers
-pypdf2
-python-docx
-pillow
-celery
-networkx
-httpx
-pydantic
-python-multipart
+# ASGI and Web Framework
+fastapi>=0.95.0
+uvicorn>=0.21.0
+
+# Database and ORM
+sqlalchemy>=2.0.0
+alembic>=1.11.0
+psycopg2-binary>=2.9.6
+
+# Vector Database
+chromadb>=0.4.0
+
+# Task Queue and Caching
+redis>=4.5.0
+celery>=5.2.0
+
+# NLP and Embeddings
+sentence-transformers>=2.2.0
+
+# File Processing
+pypdf2>=3.0.0
+python-docx>=0.8.11
+pillow>=9.5.0
+pytesseract>=0.3.10
+
+# Networking and HTTP
+httpx>=0.24.0
+
+# Data Validation
+pydantic>=1.10.0
+
+# File Uploads
+python-multipart>=0.0.6
+
+# Graph Processing
+networkx>=3.0
