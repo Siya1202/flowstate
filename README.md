@@ -261,6 +261,7 @@ This sets up all tables: `tasks`, `owners`, `deadlines`, `graph_edges`, `confide
 
 Here's the full step-by-step build sequence we're following, phase by phase.
 
+
 ---
 
 ### Phase 0 — Inference Runtime Layer
@@ -268,16 +269,37 @@ Here's the full step-by-step build sequence we're following, phase by phase.
 **Goal:** Set up the LLM inference layer that powers all extraction.
 
 ```bash
-# Start Lemonade
-lemonade serve mistral-7b-instruct --port 8080 --device hybrid
+# Start Ollama server
+ollama serve
+
+# Pull the Mistral-7B model
+ollama pull mistral:7b-instruct
 
 # Test the endpoint
-curl http://localhost:8080/v1/chat/completions \
+curl http://localhost:11434/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"model": "mistral-7b-instruct", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "mistral:7b-instruct", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-Validate the hybrid offload is active (NPU → iGPU → CPU fallback chain). Check `lemonade logs` to confirm device allocation.
+Validate the response includes the model's reply to your prompt:
+
+```json
+{
+  "model": "mistral:7b-instruct",
+  "message": {
+    "role": "assistant",
+    "content": "Hi! How can I help?"
+  }
+}
+```
+
+**Notes:**
+- Ollama runs on `http://localhost:11434` by default.
+- No GPU required (uses CPU by default).
+- Logs are printed to the terminal. Redirect to `logs/ollama.log` if needed:
+  ```bash
+  ollama serve >> logs/ollama.log 2>&1
+  ```
 
 ---
 
