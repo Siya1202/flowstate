@@ -1,0 +1,9 @@
+.env
+venv/
+__pycache__/
+*.pyc
+node_modules/
+ollama.tgz
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
