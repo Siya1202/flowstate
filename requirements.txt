@@ -34,3 +34,9 @@ python-multipart>=0.0.6
 
 # Graph Processing
 networkx>=3.0
+
+# parses and converts relative deadlines like "next Friday" to ISO timestamps
+python-dateutil
+
+# timezone handling for IST (Asia/Kolkata) deadline normalization
+pytz
