@@ -1,7 +1,7 @@
-# 🚀 Flowstate — AMD Slingshot Build Log
+# 🚀 Flowstate — Build Log
 
 > **Status:** 🔨 Active Development  
-> **Builders:** Siya & Srishti
+> **Builders:** Siya & Srishti  
 > **Project:** AI-Powered Workflow Orchestration System  
 > **Last Updated:** March 2026
 
@@ -9,9 +9,11 @@
 
 ## 📌 What We're Building
 
-Flowstate is an AI-powered workflow orchestration system that converts unstructured communication (WhatsApp exports, emails, meeting transcripts, screenshots) into structured, actionable task workflows — running locally on AMD-optimized hardware.
+Flowstate is an AI-powered workflow orchestration system that converts unstructured communication (WhatsApp exports, emails, meeting transcripts, screenshots) into structured, actionable task workflows — running locally via Ollama.
 
 We're currently in the **build phase**, implementing the full 11-phase architecture described in the system design. This README tracks our progress, setup steps, and build process end-to-end.
+
+> **Inference Strategy:** We're using **Ollama as the primary runtime** throughout phases 0–11. Lemonade integration will be explored as a performance optimization layer after all phases are complete and stable.
 
 ---
 
@@ -21,7 +23,6 @@ We're currently in the **build phase**, implementing the full 11-phase architect
 |------|------|
 | Siya | Co-builder |
 | Srishti | Co-builder |
-
 
 ---
 
@@ -60,8 +61,7 @@ flowstate/
 │   ├── graph-view/         # DAG visualization (Cytoscape.js)
 │   └── trust-popover/      # Source snippet viewer
 ├── inference/
-│   ├── lemonade/           # Primary AMD runtime config
-│   └── ollama/             # Fallback runtime
+│   └── ollama/             # Primary runtime config
 ├── docker/
 │   ├── docker-compose.yml
 │   └── Dockerfile.*
@@ -82,18 +82,19 @@ Make sure the following are installed and configured before proceeding:
 ### System Requirements
 - OS: Ubuntu 22.04+ / Windows 11 with WSL2 / macOS 13+
 - RAM: 16 GB minimum (32 GB recommended for local LLM)
-- CPU: AMD Ryzen AI 300 / 8040 series (or any modern multi-core)
-- GPU (optional): AMD Radeon with ROCm support
+- CPU: Any modern multi-core processor
+- GPU (optional): Any CUDA or Metal-compatible GPU
 - Disk: 30 GB free space (for models + data)
 
 ### Required Tools
+
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Python | 3.10+ | Backend runtime |
 | Node.js | 18+ | Frontend |
 | Docker + Docker Compose | Latest | Containerized services |
 | Git | Any | Version control |
-| AMD ROCm (optional) | 6.x | GPU acceleration |
+| Ollama | Latest | LLM inference runtime |
 
 ---
 
@@ -125,8 +126,7 @@ Open `.env` and fill in the required fields:
 
 ```env
 # Inference
-INFERENCE_RUNTIME=lemonade       # or 'ollama' for fallback
-LEMONADE_API_BASE=http://localhost:8080/v1
+INFERENCE_RUNTIME=ollama
 OLLAMA_API_BASE=http://localhost:11434
 
 # Database
@@ -188,40 +188,32 @@ npm install
 cd ..
 ```
 
-### Step 6 — Install and Configure the Inference Runtime
+### Step 6 — Install and Configure Ollama (Primary Inference Runtime)
 
-#### Option A — Lemonade (Primary, AMD-Optimized)
-
-Lemonade is AMD's official 2026 inference runtime with hybrid offload across NPU, iGPU, and CPU.
-
-```bash
-# Install Lemonade (AMD official installer)
-pip install lemonade-sdk
-
-# Verify installation
-lemonade --version
-
-# Pull and serve a model (e.g., Mistral 7B)
-lemonade serve mistral-7b-instruct --port 8080
-```
-
-Lemonade exposes an OpenAI-compatible API at `http://localhost:8080/v1` — no code changes needed.
-
-#### Option B — Ollama (Fallback)
+Ollama is our primary inference runtime throughout all build phases.
 
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
 
-# Pull a model
+# Pull the primary text model
 ollama pull mistral
-ollama pull llava          # Vision model for screenshot parsing
 
-# Start Ollama server
+# Pull the vision model (for screenshot parsing in Phase 2)
+ollama pull llava
+
+# Start the Ollama server
 ollama serve
 ```
 
-Set `INFERENCE_RUNTIME=ollama` in `.env` if using this path.
+Ollama exposes an OpenAI-compatible API at `http://localhost:11434` — no code changes needed.
+
+Verify it's running:
+```bash
+curl http://localhost:11434/api/tags
+```
+
+> **Note on Lemonade:** AMD's Lemonade runtime will be evaluated as a future optimization layer once all 11 phases are fully built and stable on Ollama. No Lemonade setup is required at this stage.
 
 ### Step 7 — Install Sentence Transformers (Embeddings)
 
@@ -261,12 +253,11 @@ This sets up all tables: `tasks`, `owners`, `deadlines`, `graph_edges`, `confide
 
 Here's the full step-by-step build sequence we're following, phase by phase.
 
-
 ---
 
-### Phase 0 — Inference Runtime Layer
+### Phase 0 — Inference Runtime Layer 🔨 In Progress / Testing
 
-**Goal:** Set up the LLM inference layer that powers all extraction.
+**Goal:** Set up the Ollama inference layer that powers all extraction.
 
 ```bash
 # Start Ollama server
@@ -295,7 +286,7 @@ Validate the response includes the model's reply to your prompt:
 
 **Notes:**
 - Ollama runs on `http://localhost:11434` by default.
-- No GPU required (uses CPU by default).
+- No GPU required — CPU inference works out of the box.
 - Logs are printed to the terminal. Redirect to `logs/ollama.log` if needed:
   ```bash
   ollama serve >> logs/ollama.log 2>&1
@@ -303,7 +294,7 @@ Validate the response includes the model's reply to your prompt:
 
 ---
 
-### Phase 1 — Ingestion Layer
+### Phase 1 — Ingestion Layer 🔨 In Progress / Testing
 
 **Goal:** Accept file uploads and push them into an async processing queue.
 
@@ -335,7 +326,7 @@ celery -A backend.worker worker --loglevel=info
 
 ---
 
-### Phase 2 — Multimodal Preprocessing Layer
+### Phase 2 — Multimodal Preprocessing Layer 🔨 In Progress / Testing
 
 **Goal:** Normalize all input types into clean, chunked text with speaker metadata.
 
@@ -350,12 +341,12 @@ def normalize(file_path: str, file_type: str) -> list[Chunk]:
     elif file_type == "pdf":
         return extract_pdf_text(file_path)
     elif file_type in ["png", "jpg"]:
-        return extract_image_text_via_vision(file_path)  # calls vision LLM
+        return extract_image_text_via_vision(file_path)  # calls LLaVA via Ollama
     elif file_type == "docx":
         return extract_docx_text(file_path)
 ```
 
-For image/screenshot inputs, the vision model (LLaVA via Lemonade) extracts text, tables, and UI labels using OCR + layout-aware parsing.
+For image/screenshot inputs, the vision model (LLaVA via Ollama) extracts text, tables, and UI labels using OCR + layout-aware parsing.
 
 Test preprocessing:
 ```bash
@@ -364,7 +355,7 @@ python -m backend.preprocessing.normalizer --file sample_screenshot.png
 
 ---
 
-### Phase 3 — Structured Extraction Engine
+### Phase 3 — Structured Extraction Engine 🔨 In Progress / Testing
 
 **Goal:** Extract tasks, owners, deadlines, and dependencies from normalized chunks using schema-enforced LLM output.
 
@@ -399,7 +390,7 @@ python -m backend.extraction.extractor --chunk "Rahul can you finish the pitch d
 
 ---
 
-### Phase 4 — Intelligence Enrichment
+### Phase 4 — Intelligence Enrichment ⬜ Not Started
 
 **Goal:** Fill gaps in extracted data — infer missing owners, normalize deadline formats, detect duplicates.
 
@@ -423,7 +414,7 @@ python -m backend.enrichment.pipeline --task-id <task_id>
 
 ---
 
-### Phase 5 — Task Graph Intelligence (DAG Engine)
+### Phase 5 — Task Graph Intelligence (DAG Engine) ⬜ Not Started
 
 **Goal:** Model tasks as a directed acyclic graph to surface dependencies, bottlenecks, and critical path.
 
@@ -448,7 +439,7 @@ python -m backend.graph.builder --transcript-id <id>
 
 ---
 
-### Phase 6 — AI Governance Layer
+### Phase 6 — AI Governance Layer ⬜ Not Started
 
 **Goal:** Route low-confidence extractions to a human review queue. Build trust into every task.
 
@@ -474,7 +465,7 @@ POST /api/review-queue/:id/edit
 
 ---
 
-### Phase 7 — Hybrid Memory Architecture
+### Phase 7 — Hybrid Memory Architecture ⬜ Not Started
 
 **Goal:** Persist all data across three complementary stores.
 
@@ -498,7 +489,7 @@ ls ./storage/objects/
 
 ---
 
-### Phase 8 — Automation Layer
+### Phase 8 — Automation Layer ⬜ Not Started
 
 **Goal:** Trigger real-world actions idempotently when tasks are approved.
 
@@ -531,7 +522,7 @@ python scripts/auth_calendar.py
 
 ---
 
-### Phase 9 — Dashboard & Visualization Layer
+### Phase 9 — Dashboard & Visualization Layer ⬜ Not Started
 
 **Goal:** Build the frontend task board with DAG view and source trust popovers.
 
@@ -561,7 +552,7 @@ import cytoscape from 'cytoscape';
 
 ---
 
-### Phase 10 — Continuous Learning & Evaluation
+### Phase 10 — Continuous Learning & Evaluation ⬜ Not Started
 
 **Goal:** Measure extraction quality and improve the system over time.
 
@@ -600,7 +591,7 @@ Target: **F1 ≥ 0.90** before final submission.
 
 ---
 
-### Phase 11 — Containerized Deployment
+### Phase 11 — Containerized Deployment ⬜ Not Started
 
 **Goal:** Package the entire system into a one-command deployable stack.
 
@@ -615,6 +606,7 @@ docker-compose up
 ```
 
 Services started:
+
 | Service | Port | Description |
 |---------|------|-------------|
 | Backend API | 8001 | FastAPI app |
@@ -622,7 +614,7 @@ Services started:
 | PostgreSQL | 5432 | Structured DB |
 | ChromaDB | 8000 | Vector store |
 | Redis | 6379 | Queue |
-| Lemonade | 8080 | LLM inference |
+| Ollama | 11434 | LLM inference |
 
 Full teardown:
 ```bash
@@ -640,7 +632,7 @@ Once all phases are built:
 docker-compose up -d postgres chromadb redis
 
 # 2. Start inference runtime
-lemonade serve mistral-7b-instruct --port 8080 --device hybrid
+ollama serve
 
 # 3. Start backend
 uvicorn backend.api.main:app --host 0.0.0.0 --port 8001 --reload
@@ -675,7 +667,7 @@ curl -X POST http://localhost:8001/upload \
 
 ## 🐳 Deployment
 
-For campus/hackathon demo deployment:
+For demo deployment:
 
 ```bash
 # One-command deploy
@@ -685,7 +677,7 @@ docker-compose -f docker/docker-compose.yml up --build
 docker-compose logs -f backend
 ```
 
-Optimized for AMD Ryzen AI laptops. No cloud dependency required.
+No cloud dependency required — runs entirely locally.
 
 ---
 
@@ -693,10 +685,10 @@ Optimized for AMD Ryzen AI laptops. No cloud dependency required.
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 0 — Inference Runtime | 🔨 In Progress | Setting up Lemonade |
-| Phase 1 — Ingestion Layer | 🔨 In Progress | Upload API drafted |
-| Phase 2 — Preprocessing | ⬜ Not Started | |
-| Phase 3 — Extraction Engine | ⬜ Not Started | |
+| Phase 0 — Inference Runtime | 🔨 In Progress / Testing | Ollama running, model validation underway |
+| Phase 1 — Ingestion Layer | 🔨 In Progress / Testing | Upload API live, Celery queue being tested |
+| Phase 2 — Preprocessing | 🔨 In Progress / Testing | Text + PDF working, image OCR via LLaVA in testing |
+| Phase 3 — Extraction Engine | 🔨 In Progress / Testing | Schema enforcement + few-shot prompts in testing |
 | Phase 4 — Enrichment | ⬜ Not Started | |
 | Phase 5 — DAG Engine | ⬜ Not Started | |
 | Phase 6 — Governance | ⬜ Not Started | |
@@ -708,17 +700,26 @@ Optimized for AMD Ryzen AI laptops. No cloud dependency required.
 
 ---
 
+## 🗺️ Roadmap — Post Phase 11
+
+Once all phases are complete and stable on Ollama, we plan to explore:
+
+- **Lemonade integration** — AMD's hybrid NPU/iGPU/CPU inference runtime as a drop-in performance layer over the existing Ollama-compatible API
+- **Model benchmarking** — Compare latency and throughput between Ollama and Lemonade on equivalent hardware
+- **Selective offloading** — Route high-frequency extraction tasks to Lemonade while keeping Ollama as fallback
+
+---
+
 ## 🐛 Known Issues
 
-- Lemonade NPU offload requires Ryzen AI 300 series — falls back to CPU on other hardware
-- Vision extraction (Phase 2) slow without GPU; use Ollama + LLaVA as fallback
+- Vision extraction (Phase 2) is slow without a GPU; LLaVA via Ollama on CPU can be sluggish for large screenshots
 - Google Calendar integration requires manual OAuth setup (one-time)
+- Redis stream backpressure not yet handled for large batch uploads
 
 ---
 
 ## 📎 References
 
-- [AMD Lemonade Runtime Docs](https://lemonade.amd.com/docs)
 - [Ollama](https://ollama.ai)
 - [ChromaDB](https://docs.trychroma.com)
 - [Sentence Transformers](https://www.sbert.net)
