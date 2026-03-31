@@ -14,6 +14,11 @@ class ExtractedTask:
     deadline: Optional[str] = None
     confidence: float = 0.0
     source_snippet: Optional[str] = None
+    dependencies: list = None
+
+    def __post_init__(self):
+        if self.dependencies is None:
+            self.dependencies = []
 
 SYSTEM_PROMPT = """
 You are a task extraction assistant. Given a conversation, extract all actionable tasks.
@@ -22,6 +27,14 @@ For each task return a JSON array where each item has:
 - owner: person responsible (null if unclear)
 - deadline: deadline mentioned (null if none)
 - confidence: float 0-1 of how confident you are this is a real task
+- dependencies: list of other task titles that must be completed before this one (empty list if none)
+
+Example:
+[
+  {"title": "Design wireframes", "owner": "Alice", "deadline": null, "confidence": 0.9, "dependencies": []},
+  {"title": "Build frontend", "owner": "Bob", "deadline": "Friday", "confidence": 0.85, "dependencies": ["Design wireframes"]},
+  {"title": "Deploy app", "owner": "Bob", "deadline": "Monday", "confidence": 0.8, "dependencies": ["Build frontend"]}
+]
 
 Return ONLY a valid JSON array, no explanation, no markdown.
 """
@@ -61,6 +74,7 @@ def extract_tasks(chunks: List[Chunk]) -> List[ExtractedTask]:
             owner=t.get("owner"),
             deadline=t.get("deadline"),
             confidence=t.get("confidence", 0.5),
-            source_snippet=None
-        ))
+            source_snippet=None,
+            dependencies=t.get("dependencies", [])
+))
     return tasks
