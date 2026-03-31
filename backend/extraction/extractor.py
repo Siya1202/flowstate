@@ -39,10 +39,22 @@ Example:
 Return ONLY a valid JSON array, no explanation, no markdown.
 """
 
+MAX_CHUNKS = 60
+MAX_CHUNK_CHARS = 300
+
 def extract_tasks(chunks: List[Chunk]) -> List[ExtractedTask]:
+    filtered = [c for c in chunks if c.text and len(c.text.strip()) > 0]
+    capped = [
+        Chunk(
+            text=c.text[:MAX_CHUNK_CHARS],
+            speaker=c.speaker,
+            metadata=getattr(c, "metadata", None)
+        )
+        for c in filtered[:MAX_CHUNKS]
+    ]
     conversation = "\n".join(
-    [f"{c.speaker}: {c.text}" if c.speaker else c.text for c in chunks[:100]]
-)
+        [f"{c.speaker}: {c.text}" if c.speaker else c.text for c in capped]
+    )
 
     response = httpx.post(
         f"{OLLAMA_API_BASE}/api/chat",
