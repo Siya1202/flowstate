@@ -10,6 +10,7 @@ from backend.enrichment.pipeline import enrich_task
 from backend.graph.dag import get_dag_summary
 from backend.vector_db import store_tasks_batch
 from backend.models import Task
+from backend.governance.router import route_tasks
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 r = redis.from_url(REDIS_URL)
@@ -89,6 +90,14 @@ def process_job(job: dict):
     print("\n✅ Job complete!")
 
     return enriched_tasks
+
+    # Phase 6 — Governance
+    print("Phase 6: Routing tasks...")
+    routing = route_tasks(enriched_tasks)
+    print(f"  ✅ Auto-approved: {len(routing['approved'])} tasks")
+    print(f"  👀 Needs review: {len(routing['review'])} tasks")
+    for t in routing['review']:
+        print(f"    - {t}")
 
 def run_worker():
     print("Worker is listening for jobs...")
