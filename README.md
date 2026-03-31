@@ -1,8 +1,8 @@
 # 🚀 Flowstate — Build Log
 
-> **Status:** 🔨 Active Development  
-> **Builders:** Siya & Srishti  
-> **Project:** AI-Powered Workflow Orchestration System  
+> **Status:** 🔨 Active Development
+> **Builders:** Siya & Srishti
+> **Project:** AI-Powered Workflow Orchestration System
 > **Last Updated:** March 2026
 
 ---
@@ -43,33 +43,39 @@ We're currently in the **build phase**, implementing the full 11-phase architect
 
 ## 📁 Project Structure
 
+<!-- FIX #1: Rewritten to match the actual repository layout -->
+
 ```
 flowstate/
 ├── backend/
 │   ├── ingestion/          # Phase 1: File upload & async queue
+│   │   └── upload.py
 │   ├── preprocessing/      # Phase 2: Multimodal normalization
+│   │   └── normalizer.py
 │   ├── extraction/         # Phase 3: LLM task extraction
+│   │   └── extractor.py
 │   ├── enrichment/         # Phase 4: Ownership inference, deduplication
+│   │   ├── pipeline.py
+│   │   ├── ownership.py
+│   │   ├── deadlines.py
+│   │   └── duplicates.py
 │   ├── graph/              # Phase 5: DAG task graph engine
-│   ├── governance/         # Phase 6: Confidence routing & review
-│   ├── memory/             # Phase 7: Hybrid memory (PostgreSQL + ChromaDB)
-│   ├── automation/         # Phase 8: Calendar, Kanban, reminders
-│   ├── evaluation/         # Phase 10: Synthetic data & F1 scoring
-│   └── api/                # FastAPI entrypoint
-├── frontend/
-│   ├── dashboard/          # Phase 9: Task board UI
-│   ├── graph-view/         # DAG visualization (Cytoscape.js)
-│   └── trust-popover/      # Source snippet viewer
+│   │   └── dag.py
+│   ├── api/                # FastAPI entrypoint
+│   │   ├── main.py
+│   │   └── enrichment.py
+│   ├── worker.py           # Async Redis job consumer
+│   ├── ml.py
+│   ├── models.py
+│   ├── db.py
+│   └── vector_db.py
 ├── inference/
 │   └── ollama/             # Primary runtime config
+│       └── pull_model.sh
 ├── docker/
-│   ├── docker-compose.yml
-│   └── Dockerfile.*
-├── scripts/
-│   ├── synthetic_gen.py    # Synthetic dataset generator
-│   └── eval.py             # Precision/Recall/F1 evaluator
-├── tests/
+│   └── docker-compose.yml
 ├── .env.example
+├── testing.md              # Full testing guide
 └── README.md               # ← You are here
 ```
 
@@ -77,9 +83,10 @@ flowstate/
 
 ## ✅ Prerequisites
 
-Make sure the following are installed and configured before proceeding:
+Make sure the following are installed and configured before proceeding.
 
 ### System Requirements
+
 - OS: Ubuntu 22.04+ / Windows 11 with WSL2 / macOS 13+
 - RAM: 16 GB minimum (32 GB recommended for local LLM)
 - CPU: Any modern multi-core processor
@@ -92,9 +99,28 @@ Make sure the following are installed and configured before proceeding:
 |------|---------|---------|
 | Python | 3.10+ | Backend runtime |
 | Node.js | 18+ | Frontend |
-| Docker + Docker Compose | Latest | Containerized services |
+| Docker + Docker Compose | Latest | Containerised services |
 | Git | Any | Version control |
 | Ollama | Latest | LLM inference runtime |
+| Tesseract OCR | Latest | System-level OCR binary (required for image preprocessing) |
+
+<!-- FIX #8: Added OS-level Tesseract install instructions -->
+
+### Installing Tesseract OCR
+
+The Python package `pytesseract` is a wrapper around the Tesseract binary, which must be installed at the OS level separately:
+
+```bash
+# Ubuntu / Debian
+sudo apt-get install tesseract-ocr
+
+# macOS
+brew install tesseract
+
+# Windows
+# Download the installer from:
+# https://github.com/UB-Mannheim/tesseract/wiki
+```
 
 ---
 
@@ -122,6 +148,8 @@ venv\Scripts\activate           # Windows
 cp .env.example .env
 ```
 
+<!-- FIX #6: Clarified that the password must match the docker-compose.yml hardcoded value -->
+
 Open `.env` and fill in the required fields:
 
 ```env
@@ -134,7 +162,7 @@ POSTGRES_HOST=localhost
 POSTGRES_PORT=5432
 POSTGRES_DB=flowstate
 POSTGRES_USER=flowstate_user
-POSTGRES_PASSWORD=your_secure_password
+POSTGRES_PASSWORD=flowstate123
 
 # ChromaDB
 CHROMA_HOST=localhost
@@ -155,6 +183,8 @@ DUPLICATE_SIMILARITY_THRESHOLD=0.85
 GOOGLE_CALENDAR_CREDENTIALS_PATH=./credentials/google_calendar.json
 ```
 
+> **Important:** The `POSTGRES_PASSWORD` value must match the password hardcoded in `docker/docker-compose.yml`. The default in both files is `flowstate123`. If you change it here, update `docker/docker-compose.yml` to match before starting services.
+
 ---
 
 ## 📦 Installation
@@ -166,6 +196,7 @@ pip install -r requirements.txt
 ```
 
 Key packages being installed:
+
 ```
 fastapi uvicorn
 sqlalchemy alembic psycopg2-binary
@@ -173,8 +204,8 @@ chromadb
 redis
 sentence-transformers
 pypdf2 python-docx pillow
-celery
-networkx                  # DAG graph engine
+pytesseract                   # Image OCR (requires system-level Tesseract — see Prerequisites)
+networkx                      # DAG graph engine
 httpx
 pydantic
 python-multipart
@@ -197,10 +228,8 @@ Ollama is our primary inference runtime throughout all build phases.
 curl -fsSL https://ollama.ai/install.sh | sh
 
 # Pull the primary text model
+# FIX #7: Using "mistral" consistently — this is the tag used in backend/extraction/extractor.py
 ollama pull mistral
-
-# Pull the vision model (for screenshot parsing in Phase 2)
-ollama pull llava
 
 # Start the Ollama server
 ollama serve
@@ -209,6 +238,7 @@ ollama serve
 Ollama exposes an OpenAI-compatible API at `http://localhost:11434` — no code changes needed.
 
 Verify it's running:
+
 ```bash
 curl http://localhost:11434/api/tags
 ```
@@ -225,8 +255,10 @@ This will download the MiniLM model (~80 MB) on first run.
 
 ### Step 8 — Start Infrastructure Services via Docker
 
+<!-- FIX #3: Added the correct -f flag with path to docker/docker-compose.yml -->
+
 ```bash
-docker-compose up -d postgres chromadb redis
+docker-compose -f docker/docker-compose.yml up -d postgres chromadb redis
 ```
 
 This starts:
@@ -235,8 +267,9 @@ This starts:
 - **Redis** on port `6379` — async message queue
 
 Verify they're running:
+
 ```bash
-docker-compose ps
+docker-compose -f docker/docker-compose.yml ps
 ```
 
 ### Step 9 — Run Database Migrations
@@ -263,20 +296,21 @@ Here's the full step-by-step build sequence we're following, phase by phase.
 # Start Ollama server
 ollama serve
 
-# Pull the Mistral-7B model
-ollama pull mistral:7b-instruct
+# Pull the Mistral model
+# FIX #7: Using "mistral" consistently throughout
+ollama pull mistral
 
 # Test the endpoint
 curl http://localhost:11434/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"model": "mistral:7b-instruct", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "mistral", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
 Validate the response includes the model's reply to your prompt:
 
 ```json
 {
-  "model": "mistral:7b-instruct",
+  "model": "mistral",
   "message": {
     "role": "assistant",
     "content": "Hi! How can I help?"
@@ -305,24 +339,29 @@ Build the upload API endpoint:
 @router.post("/upload")
 async def upload_file(file: UploadFile, team_id: str):
     # Save raw file to object store
-    # Push metadata to Redis stream
+    # Push job metadata to Redis list
     # Return job_id
 ```
 
 Supported input formats: `.txt` (WhatsApp), `.pdf`, `.docx`, `.png`/`.jpg` (screenshots), `.json` (Discord).
 
 Test ingestion:
+
 ```bash
 curl -X POST http://localhost:8001/upload \
   -F "file=@sample_chat.txt" \
   -F "team_id=team_alpha"
 ```
 
-Set up Redis Stream consumer:
+<!-- FIX #2: Replaced Celery command with the correct plain Python worker command -->
+
+Start the async job worker:
+
 ```bash
-# Start the worker
-celery -A backend.worker worker --loglevel=info
+python -m backend.worker
 ```
+
+The worker is a plain Python Redis list consumer (`brpop` on `flowstate:jobs`). It does not use Celery.
 
 ---
 
@@ -331,6 +370,8 @@ celery -A backend.worker worker --loglevel=info
 **Goal:** Normalize all input types into clean, chunked text with speaker metadata.
 
 Build the content normalizer:
+
+<!-- FIX #5: Updated to reflect actual pytesseract implementation, not LLaVA -->
 
 ```python
 # backend/preprocessing/normalizer.py
@@ -341,14 +382,15 @@ def normalize(file_path: str, file_type: str) -> list[Chunk]:
     elif file_type == "pdf":
         return extract_pdf_text(file_path)
     elif file_type in ["png", "jpg"]:
-        return extract_image_text_via_vision(file_path)  # calls LLaVA via Ollama
+        return extract_image_text(file_path)   # uses pytesseract (Tesseract OCR)
     elif file_type == "docx":
         return extract_docx_text(file_path)
 ```
 
-For image/screenshot inputs, the vision model (LLaVA via Ollama) extracts text, tables, and UI labels using OCR + layout-aware parsing.
+For image and screenshot inputs, **Tesseract OCR** (via the `pytesseract` Python wrapper) extracts text from the image. Ensure the system-level Tesseract binary is installed — see [Prerequisites](#prerequisites).
 
 Test preprocessing:
+
 ```bash
 python -m backend.preprocessing.normalizer --file sample_screenshot.png
 ```
@@ -357,7 +399,7 @@ python -m backend.preprocessing.normalizer --file sample_screenshot.png
 
 ### Phase 3 — Structured Extraction Engine 🔨 In Progress / Testing
 
-**Goal:** Extract tasks, owners, deadlines, and dependencies from normalized chunks using schema-enforced LLM output.
+**Goal:** Extract tasks, owners, deadlines, and dependencies from normalised chunks using schema-enforced LLM output.
 
 This is the **core intelligence layer**. We're using strict JSON schema enforcement so the LLM never returns malformed output:
 
@@ -383,6 +425,7 @@ The system prompt includes few-shot examples covering:
 - Task with no owner identified
 
 Test extraction:
+
 ```bash
 python -m backend.extraction.extractor --chunk "Rahul can you finish the pitch deck by Thursday evening?"
 # Expected: {task: "Complete pitch deck", owner: "Rahul", deadline: "Thursday evening", confidence: 0.94}
@@ -390,15 +433,18 @@ python -m backend.extraction.extractor --chunk "Rahul can you finish the pitch d
 
 ---
 
-### Phase 4 — Intelligence Enrichment ⬜ Not Started
+### Phase 4 — Intelligence Enrichment 🔨 In Progress / Testing
 
-**Goal:** Fill gaps in extracted data — infer missing owners, normalize deadline formats, detect duplicates.
+<!-- FIX #4: Updated from "Not Started" to "In Progress / Testing" -->
+
+**Goal:** Fill gaps in extracted data — infer missing owners, normalise deadline formats, detect duplicates.
 
 **Ownership Inference:**
 When `owner == null`, use historical ownership mapping and speaker activity frequency to assign `inferred_owner` with `inference_confidence`.
 
-**Deadline Normalization:**
+**Deadline Normalisation:**
 Convert relative times to absolute ISO timestamps:
+
 ```python
 "Next Friday" → "2026-03-27T23:59:00+05:30"
 "EOD"         → "2026-03-24T18:00:00+05:30"
@@ -412,13 +458,22 @@ Before inserting a new task, compare its embedding against all existing task emb
 python -m backend.enrichment.pipeline --task-id <task_id>
 ```
 
+Implemented in:
+- `backend/enrichment/pipeline.py` — end-to-end orchestration
+- `backend/enrichment/ownership.py` — owner inference
+- `backend/enrichment/deadlines.py` — deadline normalisation
+- `backend/enrichment/duplicates.py` — duplicate detection
+
 ---
 
-### Phase 5 — Task Graph Intelligence (DAG Engine) ⬜ Not Started
+### Phase 5 — Task Graph Intelligence (DAG Engine) 🔨 In Progress / Testing
+
+<!-- FIX #4: Updated from "Not Started" to "In Progress / Testing" -->
 
 **Goal:** Model tasks as a directed acyclic graph to surface dependencies, bottlenecks, and critical path.
 
 ```python
+# backend/graph/dag.py
 import networkx as nx
 
 G = nx.DiGraph()
@@ -430,11 +485,18 @@ critical_path = nx.dag_longest_path(G)
 bottlenecks   = [n for n in G.nodes if G.in_degree(n) > 2]
 ```
 
+Available functions in `backend/graph/dag.py`:
+- `build_dag()` — construct the graph from stored task/edge data
+- `get_critical_path()` — return the longest dependency chain
+- `get_bottlenecks()` — identify high-in-degree nodes
+- `get_dag_summary()` — return a summary dict for the API
+
 Store graph edges in PostgreSQL (adjacency list) and cache in memory for fast traversal.
 
 Test graph builder:
+
 ```bash
-python -m backend.graph.builder --transcript-id <id>
+python -m backend.graph.dag --transcript-id <id>
 ```
 
 ---
@@ -457,8 +519,9 @@ Every task carries:
 - Inference trace (how the owner was determined)
 
 Build the review queue API:
+
 ```bash
-GET  /api/review-queue          # List tasks needing human review
+GET  /api/review-queue            # List tasks needing human review
 POST /api/review-queue/:id/approve
 POST /api/review-queue/:id/edit
 ```
@@ -476,6 +539,7 @@ POST /api/review-queue/:id/edit
 | Object | Local FS / S3-compatible | Raw transcripts, uploaded files, OCR outputs |
 
 Verify all three are operational:
+
 ```bash
 # PostgreSQL
 psql -h localhost -U flowstate_user -d flowstate -c "\dt"
@@ -500,6 +564,7 @@ For each approved task with a deadline:
 4. Emit event on internal event bus
 
 Idempotency check before every action:
+
 ```python
 task_hash = sha256(f"{task_id}:{owner}:{deadline}".encode()).hexdigest()
 if already_processed(task_hash):
@@ -507,11 +572,13 @@ if already_processed(task_hash):
 ```
 
 Test automation:
+
 ```bash
 python -m backend.automation.trigger --task-id <id>
 ```
 
 Set up Google Calendar credentials:
+
 ```bash
 # Place OAuth credentials at:
 ./credentials/google_calendar.json
@@ -522,7 +589,7 @@ python scripts/auth_calendar.py
 
 ---
 
-### Phase 9 — Dashboard & Visualization Layer ⬜ Not Started
+### Phase 9 — Dashboard & Visualisation Layer ⬜ Not Started
 
 **Goal:** Build the frontend task board with DAG view and source trust popovers.
 
@@ -538,12 +605,13 @@ Frontend components to build:
 - **Trust Popover** — Click any task → shows extracted source chat snippet + line reference + confidence score
 
 Build the graph view:
+
 ```bash
 npm install cytoscape
 ```
 
 ```javascript
-// frontend/graph-view/DagView.jsx
+// DAG view component
 import cytoscape from 'cytoscape';
 // Render nodes (tasks) and edges (dependencies)
 // Color critical path red
@@ -558,6 +626,7 @@ import cytoscape from 'cytoscape';
 
 **Human Feedback Loop:**
 When a user edits an AI-generated task (owner, deadline, wording), store the diff:
+
 ```python
 {
     "original": { "owner": null, "deadline": "Friday" },
@@ -569,6 +638,7 @@ When a user edits an AI-generated task (owner, deadline, wording), store the dif
 Use diffs to refine system prompts and recalibrate confidence thresholds.
 
 **Synthetic Dataset Generator:**
+
 ```bash
 python scripts/synthetic_gen.py --count 200 --output data/synthetic_hackathon.json
 ```
@@ -576,11 +646,13 @@ python scripts/synthetic_gen.py --count 200 --output data/synthetic_hackathon.js
 Generates simulated chat transcripts with known ground-truth tasks.
 
 **Evaluation:**
+
 ```bash
 python scripts/eval.py --dataset data/synthetic_hackathon.json
 ```
 
 Outputs:
+
 ```
 Precision: 0.941
 Recall:    0.928
@@ -591,18 +663,20 @@ Target: **F1 ≥ 0.90** before final submission.
 
 ---
 
-### Phase 11 — Containerized Deployment ⬜ Not Started
+### Phase 11 — Containerised Deployment ⬜ Not Started
 
 **Goal:** Package the entire system into a one-command deployable stack.
 
 Build all Docker images:
+
 ```bash
-docker-compose build
+docker-compose -f docker/docker-compose.yml build
 ```
 
 Start everything:
+
 ```bash
-docker-compose up
+docker-compose -f docker/docker-compose.yml up
 ```
 
 Services started:
@@ -617,8 +691,9 @@ Services started:
 | Ollama | 11434 | LLM inference |
 
 Full teardown:
+
 ```bash
-docker-compose down -v
+docker-compose -f docker/docker-compose.yml down -v
 ```
 
 ---
@@ -629,7 +704,7 @@ Once all phases are built:
 
 ```bash
 # 1. Start infrastructure
-docker-compose up -d postgres chromadb redis
+docker-compose -f docker/docker-compose.yml up -d postgres chromadb redis
 
 # 2. Start inference runtime
 ollama serve
@@ -637,8 +712,9 @@ ollama serve
 # 3. Start backend
 uvicorn backend.api.main:app --host 0.0.0.0 --port 8001 --reload
 
-# 4. Start Celery worker (async jobs)
-celery -A backend.worker worker --loglevel=info
+# 4. Start async job worker
+# FIX #2: Correct command — worker.py uses plain Python Redis (brpop), not Celery
+python -m backend.worker
 
 # 5. Start frontend
 cd frontend && npm run dev
@@ -650,10 +726,11 @@ Visit `http://localhost:3000` to use the dashboard.
 
 ## 🧪 Testing & Evaluation
 
-```bash
-# Run all unit tests
-pytest tests/ -v
+<!-- FIX #10: Added reference to testing.md -->
 
+See [testing.md](./testing.md) for the full testing guide.
+
+```bash
 # Run extraction accuracy eval
 python scripts/eval.py --dataset data/synthetic_hackathon.json
 
@@ -674,7 +751,7 @@ For demo deployment:
 docker-compose -f docker/docker-compose.yml up --build
 
 # Check logs
-docker-compose logs -f backend
+docker-compose -f docker/docker-compose.yml logs -f backend
 ```
 
 No cloud dependency required — runs entirely locally.
@@ -683,14 +760,16 @@ No cloud dependency required — runs entirely locally.
 
 ## 📊 Current Progress
 
+<!-- FIX #4: Updated Phase 4 and Phase 5 to reflect actual implementation status -->
+
 | Phase | Status | Notes |
 |-------|--------|-------|
 | Phase 0 — Inference Runtime | 🔨 In Progress / Testing | Ollama running, model validation underway |
-| Phase 1 — Ingestion Layer | 🔨 In Progress / Testing | Upload API live, Celery queue being tested |
-| Phase 2 — Preprocessing | 🔨 In Progress / Testing | Text + PDF working, image OCR via LLaVA in testing |
+| Phase 1 — Ingestion Layer | 🔨 In Progress / Testing | Upload API live, Redis queue being tested |
+| Phase 2 — Preprocessing | 🔨 In Progress / Testing | Text + PDF working, image OCR via pytesseract in testing |
 | Phase 3 — Extraction Engine | 🔨 In Progress / Testing | Schema enforcement + few-shot prompts in testing |
-| Phase 4 — Enrichment | 🔨 In Progress / Testing | |
-| Phase 5 — DAG Engine | 🔨 In Progress / Testing | |
+| Phase 4 — Enrichment | 🔨 In Progress / Testing | pipeline.py, ownership.py, deadlines.py, duplicates.py implemented |
+| Phase 5 — DAG Engine | 🔨 In Progress / Testing | dag.py implemented with build, critical path, bottleneck, summary functions |
 | Phase 6 — Governance | ⬜ Not Started | |
 | Phase 7 — Memory Architecture | ⬜ Not Started | |
 | Phase 8 — Automation | ⬜ Not Started | |
@@ -712,9 +791,10 @@ Once all phases are complete and stable on Ollama, we plan to explore:
 
 ## 🐛 Known Issues
 
-- Vision extraction (Phase 2) is slow without a GPU; LLaVA via Ollama on CPU can be sluggish for large screenshots
-- Google Calendar integration requires manual OAuth setup (one-time)
-- Redis stream backpressure not yet handled for large batch uploads
+- Image OCR (Phase 2) uses Tesseract via `pytesseract`. On CPU without GPU acceleration, processing large screenshots may be slow.
+- The `/enrich` API endpoint is defined in `backend/api/enrichment.py` but is not yet mounted in `backend/api/main.py`. It will not respond until the router is registered.
+- Google Calendar integration requires manual OAuth setup (one-time).
+- Redis backpressure not yet handled for large batch uploads.
 
 ---
 
@@ -726,3 +806,5 @@ Once all phases are complete and stable on Ollama, we plan to explore:
 - [Cytoscape.js](https://js.cytoscape.org)
 - [FastAPI](https://fastapi.tiangolo.com)
 - [NetworkX DAG Docs](https://networkx.org/documentation/stable/reference/algorithms/dag.html)
+- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract)
+- [pytesseract](https://github.com/madmaze/pytesseract)
