@@ -3,9 +3,8 @@ import redis
 import json
 import logging
 from typing import List, Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import BaseModel
-from typing import Optional, List
 
 
 # --- Config ---
@@ -14,8 +13,7 @@ class Settings(BaseSettings):
     EXTRACTION_CONFIDENCE_THRESHOLD: float = 0.75
     OWNERSHIP_INFERENCE_THRESHOLD: float = 0.70
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
 r = redis.from_url(settings.REDIS_URL)
