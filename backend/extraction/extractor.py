@@ -48,7 +48,7 @@ def extract_tasks(chunks: List[Chunk]) -> List[ExtractedTask]:
     all_tasks = []
     batch_size = 100
 
-    chunks = chunks[:10000]  # Cap at 10000 chunks for performance
+    chunks = chunks[:1000]  # Cap at 1000 chunks for performance
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i:i + batch_size]
         conversation = "\n".join(
