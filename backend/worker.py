@@ -11,7 +11,7 @@ from backend.graph.dag import get_dag_summary
 from backend.vector_db import store_tasks_batch
 from backend.models import Task
 from backend.governance.router import route_tasks
-from backend.automation.trigger import trigger_approved_tasks
+from automation.trigger import trigger_approved_tasks
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 r = redis.from_url(REDIS_URL)

@@ -1,4 +1,4 @@
-from backend.automation.calendar import get_calendar_service
+from automation.calendar import get_calendar_service
 
 if __name__ == "__main__":
     print("Starting Google Calendar auth flow...")

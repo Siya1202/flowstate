@@ -4,7 +4,7 @@ import os
 import redis
 from typing import List
 from backend.models import Task
-from backend.automation.calendar import create_calendar_event
+from automation.calendar import create_calendar_event
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 r = redis.from_url(REDIS_URL)
