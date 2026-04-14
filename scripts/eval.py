@@ -4,8 +4,8 @@ import httpx
 import os
 import sys
 sys.path.insert(0, ".")
-from backend.extraction.extractor import extract_tasks
-from backend.preprocessing.normalizer import Chunk
+from flowstate.extraction.extractor import extract_tasks
+from flowstate.preprocessing.normalizer import Chunk
 
 SIMILARITY_THRESHOLD = 0.6
 

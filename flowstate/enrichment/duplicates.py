@@ -1,7 +1,7 @@
 from typing import Optional, List
-from backend.models import Task
-from backend.vector_db import query_similar_tasks
-from backend.ml import model
+from flowstate.ml import model
+from flowstate.models import Task
+from flowstate.vector_db import query_similar_tasks
 
 def detect_duplicates(task: Task, team_id: str, similarity_threshold: float = 0.92) -> Optional[List[Task]]:
     """

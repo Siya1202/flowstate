@@ -1,7 +1,7 @@
 from typing import Optional, Dict, List
 from datetime import datetime
-from backend.models import Task, Chunk
-from backend.db import get_historical_ownership, get_speaker_activity
+from flowstate.infra.task_store import get_historical_ownership, get_speaker_activity
+from flowstate.models import Chunk, Task
 
 def infer_owner(task: Task, team_id: str) -> Optional[str]:
     """

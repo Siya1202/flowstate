@@ -6,6 +6,7 @@ import pytesseract
 from PIL import Image
 from PyPDF2 import PdfReader
 from docx import Document
+from flowstate.watchers.base import RawEvent
 
 @dataclass
 class Chunk:
@@ -13,12 +14,26 @@ class Chunk:
     speaker: Optional[str] = None
     metadata: Optional[Dict] = None
 
-def normalize(file_path: str, file_type: str) -> List[Chunk]:
+def normalize(
+    file_path: Optional[str] = None,
+    file_type: Optional[str] = None,
+    *,
+    content: Optional[str] = None,
+    source: Optional[str] = None,
+    metadata: Optional[Dict] = None,
+) -> List[Chunk]:
+    # New watcher path: normalize already-extracted raw text payloads.
+    if content is not None:
+        return normalize_raw_content(content=content, source=source, metadata=metadata or {})
+
+    if not file_path or not file_type:
+        raise ValueError("Either content or (file_path and file_type) must be provided")
+
     if file_type == ".txt":
         return chunk_whatsapp(file_path)
     elif file_type == ".pdf":
         return extract_pdf_text(file_path)
-    elif file_type in [".png", ".jpg"]:
+    elif file_type in [".png", ".jpg", ".jpeg"]:
         return extract_image_text(file_path)
     elif file_type == ".docx":
         return extract_docx_text(file_path)
@@ -26,6 +41,25 @@ def normalize(file_path: str, file_type: str) -> List[Chunk]:
         return parse_discord_json(file_path)
     else:
         raise ValueError(f"Unsupported file type: {file_type}")
+
+
+def normalize_raw_event(event: RawEvent) -> List[Chunk]:
+    """Convert any RawEvent into Chunks for the extraction pipeline."""
+    return normalize(
+        content=event.content,
+        source=event.source,
+        metadata={**event.metadata, "team_id": event.team_id},
+    )
+
+
+def normalize_raw_content(content: str, source: Optional[str], metadata: Dict) -> List[Chunk]:
+    speaker = metadata.get("sender") or metadata.get("from")
+    lines = [line.strip() for line in content.splitlines() if line.strip()]
+
+    if source in {"slack", "discord", "whatsapp"} and len(lines) > 1:
+        return [Chunk(text=line, speaker=speaker, metadata=metadata) for line in lines]
+
+    return [Chunk(text=content.strip(), speaker=speaker, metadata=metadata)] if content.strip() else []
 
 def chunk_whatsapp(file_path: str) -> List[Chunk]:
     chunks = []

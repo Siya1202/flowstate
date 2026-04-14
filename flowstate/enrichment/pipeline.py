@@ -1,7 +1,9 @@
 from typing import Dict, Optional
-from backend.models import Task
-from backend.enrichment import infer_owner, normalize_deadline, detect_duplicates
-from backend.db import get_task_by_id
+from flowstate.models import Task
+from flowstate.enrichment.deadlines import normalize_deadline
+from flowstate.enrichment.duplicates import detect_duplicates
+from flowstate.enrichment.ownership import infer_owner
+from flowstate.infra.task_store import get_task_by_id
 
 def enrich_task(task: Task, team_id: str) -> Task:
     """
@@ -30,12 +32,14 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--task-id", required=True, help="Task ID to enrich")
+    parser.add_argument("--team-id", required=True, help="Team ID for tenancy-scoped lookup")
     args = parser.parse_args()
 
     # Fetch task from DB
-    task = get_task_by_id(args.task_id)
+    task = get_task_by_id(args.task_id, args.team_id)
     if task:
         enriched_task = enrich_task(task, task.team_id)
-        print(f"Enriched task: {enriched_task.dict()}")
+        payload = enriched_task.dict() if hasattr(enriched_task, "dict") else str(enriched_task)
+        print(f"Enriched task: {payload}")
     else:
-        print(f"Task {args.task_id} not found.")
+        print(f"Task {args.task_id} not found for team {args.team_id}.")

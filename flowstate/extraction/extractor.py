@@ -4,7 +4,7 @@ import json
 import os
 from typing import List, Optional
 from dataclasses import dataclass
-from backend.preprocessing.normalizer import Chunk
+from flowstate.preprocessing.normalizer import Chunk
 
 OLLAMA_API_BASE = os.getenv("OLLAMA_API_BASE", "http://localhost:11434")
 
