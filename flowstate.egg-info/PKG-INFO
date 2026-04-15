@@ -1,0 +1,60 @@
+Metadata-Version: 2.4
+Name: flowstate
+Version: 0.1.0
+Summary: Always-on workflow orchestrator with dependency graph intelligence
+Author-email: Siya <siya1202@gmail.com>, Srishti <pandeysrishti2020@gmail.com>
+Maintainer-email: Siya <siya1202@gmail.com>, Srishti <pandeysrishti2020@gmail.com>
+License-Expression: LicenseRef-Proprietary
+Project-URL: Homepage, https://github.com/srish/flowstate
+Project-URL: Repository, https://github.com/srish/flowstate
+Project-URL: Documentation, https://github.com/srish/flowstate#readme
+Project-URL: Issues, https://github.com/srish/flowstate/issues
+Project-URL: Changelog, https://github.com/srish/flowstate/releases
+Keywords: workflow,orchestration,graph,automation,ai
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: alembic>=1.13
+Requires-Dist: fastapi>=0.110
+Requires-Dist: httpx>=0.27
+Requires-Dist: networkx>=3.2
+Requires-Dist: pydantic>=2.7
+Requires-Dist: pydantic-settings>=2.2
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: redis>=5.0
+Requires-Dist: requests>=2.31
+Requires-Dist: SQLAlchemy>=2.0
+Provides-Extra: ml
+Requires-Dist: chromadb>=1.0; extra == "ml"
+Requires-Dist: sentence-transformers>=3.0; extra == "ml"
+Provides-Extra: watchers
+Requires-Dist: PyPDF2>=3.0; extra == "watchers"
+Requires-Dist: pytesseract>=0.3; extra == "watchers"
+Requires-Dist: python-docx>=1.1; extra == "watchers"
+Requires-Dist: pillow>=10.0; extra == "watchers"
+Requires-Dist: google-auth>=2.0; extra == "watchers"
+Requires-Dist: google-auth-oauthlib>=1.2; extra == "watchers"
+Requires-Dist: google-auth-httplib2>=0.2; extra == "watchers"
+Requires-Dist: google-api-python-client>=2.0; extra == "watchers"
+
+# Flowstate
+
+Flowstate is an always-on workflow orchestration library for teams whose work is spread across chat, docs, email, and other systems rather than a single project tracker.
+
+It solves three core problems:
+
+1. Work fragmentation: important tasks and dependencies stay buried in conversations and files.
+2. Stale planning systems: manually maintained trackers drift from real execution state.
+3. Slow blocker resolution: teams discover bottlenecks too late and react manually.
+
+How Flowstate solves this:
+
+- Ingests activity from multiple sources and normalizes it into machine-usable events.
+- Extracts tasks and dependencies, enriches ownership/deadlines, and builds a live dependency graph.
+- Computes intelligence signals (critical path, bottlenecks, stale blockers) and triggers downstream actions through connectors and agent tools.
+
+Flowstate is built by Siya Sinnarkar and Srishti Pandey.

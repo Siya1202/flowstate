@@ -1,0 +1,6 @@
+[console_scripts]
+flowstate = flowstate.cli:main
+flowstate-agent-loop = flowstate.agent.loop:main
+flowstate-bump-version = flowstate.release:main
+flowstate-mcp = flowstate.mcp_server:main
+flowstate-slack-bot = flowstate.slack_bot:main

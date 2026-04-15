@@ -55,24 +55,25 @@ class GoogleCalendarConnector(BaseConnector):
 			return ConnectorResult(
 				success=True,
 				external_id=None,
-				message=f"Already scheduled: {task.title}"
+				message=f"Already scheduled: {getattr(task, 'title', None) or getattr(task, 'task', 'task')}"
 			)
 
 		try:
-			from automation.calendar import schedule_task
+			from automation.calendar import create_calendar_event
 			
-			event_id = schedule_task(
-				title=task.title,
-				deadline=task.deadline,
-				credentials=self.credentials
+			created_event = create_calendar_event(
+				task_title=getattr(task, "title", None) or getattr(task, "task", "Untitled task"),
+				owner=getattr(task, "owner", None) or "Unassigned",
+				deadline=getattr(task, "deadline", None) or "",
 			)
+			event_id = created_event.get("id") if isinstance(created_event, dict) else None
 			
 			_mark_triggered(idempotency_key)
 			
 			return ConnectorResult(
 				success=True,
 				external_id=event_id,
-				message=f"Scheduled: {task.title}"
+				message=f"Scheduled: {getattr(task, 'title', None) or getattr(task, 'task', 'task')}"
 			)
 		except Exception as e:
 			return ConnectorResult(

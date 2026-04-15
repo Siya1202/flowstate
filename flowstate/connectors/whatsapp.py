@@ -123,6 +123,10 @@ class WhatsAppConnector(BaseConnector):
 
 	def _build_message_text(self, task: Any, event: GraphEvent) -> str:
 		"""Build the nudge message text."""
+		draft_text = event.metadata.get("draft")
+		if draft_text:
+			return draft_text
+
 		blocked_by = event.metadata.get("blocked_by", "a task")
 		blocker_owner = event.metadata.get("blocker_owner", "someone")
 		days_stuck = event.metadata.get("days_stuck", 1)

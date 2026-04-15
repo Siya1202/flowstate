@@ -18,6 +18,49 @@ Flowstate reads the real version. It builds a dependency graph from it, keeps it
 
 ---
 
+## Quickstart for library users
+
+Install from source (editable):
+
+```bash
+python -m pip install -e .
+```
+
+Check package and CLI entrypoints:
+
+```bash
+flowstate --version
+flowstate-agent-loop --help
+flowstate-mcp --help
+```
+
+Use Flowstate directly in Python:
+
+```python
+from flowstate import FlowstateDAG, get_critical_path
+
+dag = FlowstateDAG(team_id="team_alpha")
+dag.load_from_db()
+critical = get_critical_path(dag)
+print(critical)
+```
+
+Run the Slack bot webhook service:
+
+```bash
+SLACK_SIGNING_SECRET=your-signing-secret \
+REDIS_URL=redis://localhost:6379 \
+flowstate-slack-bot --host 127.0.0.1 --port 8011
+```
+
+Run the MCP server over stdio:
+
+```bash
+flowstate-mcp --team-id team_alpha
+```
+
+---
+
 ## Stack
 
 | Layer | Technology |
@@ -33,45 +76,91 @@ Flowstate reads the real version. It builds a dependency graph from it, keeps it
 
 ---
 
+## Packaging and Release
+
+### Version bump command path
+
+```bash
+flowstate-bump-version patch
+# or
+flowstate-bump-version minor
+# or explicit
+flowstate-bump-version patch --set-version 0.2.0
+```
+
+### Build + metadata validation
+
+```bash
+python -m build
+python -m twine check dist/*
+```
+
+### TestPyPI dry-run upload command
+
+Use an API token generated from TestPyPI account settings.
+
+```bash
+python -m twine upload \
+    --repository-url https://test.pypi.org/legacy/ \
+    --username __token__ \
+    --password "$TEST_PYPI_API_TOKEN" \
+    --non-interactive \
+    --skip-existing \
+    dist/*
+```
+
+---
+
 ## Repo structure
 
 ```
 flowstate/
 ├── backend/
 │   ├── main.py                  # FastAPI entry point
-│   ├── db.py                    # DB session (being replaced — see Layer 0)
-│   └── worker.py                # Redis job consumer
+│   ├── worker.py                # Redis job consumer ✅ working
+│   └── slack_bot.py             # Slack webhook receiver ✅ working
 ├── flowstate/
-│   ├── infra/                   # DB/Redis/Chroma bootstrapping (Layer 0)
-│   ├── config.py                # Workspace + env config (Layer 0)
+│   ├── infra/                   # DB/Redis/Chroma clients + SQLAlchemy models ✅ working
+│   ├── config.py                # Env-driven config ✅ working
 │   ├── watchers/                # Always-on input sources (Layer 1)
 │   │   ├── base.py
 │   │   ├── file_watcher.py
-│   │   └── email_watcher.py
+│   │   ├── email_watcher.py
+│   │   ├── registry.py
+│   │   └── runner.py
 │   ├── extraction/              # LLM-based task extraction
 │   │   └── extractor.py         ✅ working
 │   ├── preprocessing/
 │   │   └── normalizer.py        ✅ working
 │   ├── enrichment/              # Ownership, deadlines, dedup ✅ working
 │   ├── graph/
-│   │   └── dag.py               ✅ skeleton — extending in Layer 2
+│   │   ├── dag.py               ✅ working
+│   │   └── intelligence.py      ✅ working
 │   ├── governance/
 │   │   └── router.py            ✅ working
 │   ├── connectors/              # Output actions (Layer 3)
 │   │   ├── base.py
-│   │   └── registry.py
-│   ├── drafting/                # Message drafting engine (Layer 4)
-│   ├── agent/                   # Agent loop + tools (Layer 5)
+│   │   ├── registry.py
+│   │   ├── google_calendar.py
+│   │   ├── slack.py
+│   │   ├── webhook.py
+│   │   └── whatsapp.py
+│   ├── drafting/
+│   │   └── generator.py         ✅ working
+│   ├── agent/                   # Agent loop + tools ✅ working
+│   │   ├── tools.py
+│   │   └── loop.py
 │   ├── evaluation/              # Scoring + feedback (Layer 6)
 │   │   └── scorer.py
-│   └── mcp_server.py            # MCP server entry point (Layer 5)
+│   ├── mcp_server.py            # MCP server entry point ✅ working
+│   └── slack_bot.py             # Slack bot runner ✅ working
 ├── automation/
 │   ├── calendar.py              ✅ working — becomes first connector
 │   └── trigger.py               ✅ idempotency pattern — reuse everywhere
 ├── vector_db.py                 ✅ working
 ├── ml.py                        ✅ working
 ├── frontend/                    # React + Vite (Layer 7)
-├── alembic/                     ✅ skeleton exists
+├── alembic/                     ✅ migrations in place
 ├── docker-compose.yml
 └── .env.example
 ```
@@ -83,15 +172,20 @@ flowstate/
 | Module | Status | Notes |
 |---|---|---|
 | `extraction/extractor.py` | ✅ | Mistral task extraction — just extend |
+| `flowstate/agent/tools.py` | ✅ | Agent tools for graph, drafting, governance |
+| `flowstate/agent/loop.py` | ✅ | Agent loop wired for tool-calling |
+| `flowstate/mcp_server.py` | ✅ | MCP server entrypoint available via CLI |
+| `backend/slack_bot.py` + `flowstate/slack_bot.py` | ✅ | Slack webhook receiver + package runner |
 | `enrichment/` | ✅ | Ownership, deadlines, dedup — solid |
-| `graph/dag.py` | ✅ | NetworkX DAG + critical path — good skeleton |
+| `graph/dag.py` + `graph/intelligence.py` | ✅ | DAG storage + critical-path and bottleneck helpers |
 | `governance/router.py` | ✅ | Approve/review routing |
+| `connectors/` (`google_calendar`, `slack`, `webhook`, `whatsapp`) | ✅ | Connector interfaces and implementations in place |
 | `automation/calendar.py` | ✅ | Google Calendar — becomes first connector |
 | `automation/trigger.py` | ✅ | Idempotency hash — copy this pattern for all connectors |
 | `vector_db.py` | ✅ | ChromaDB + similarity search |
 | `ml.py` | ✅ | SentenceTransformer embeddings |
-| Redis queue + `worker.py` | ✅ | Extend, don't rewrite |
-| Alembic + Postgres config | ✅ | Skeleton — finish it in Layer 0 |
+| Redis queue + `worker.py` | ✅ | Worker pipeline is running and extensible |
+| Alembic + Postgres config | ✅ | Initial migrations exist and are tracked |
 
 ---
 
@@ -104,9 +198,10 @@ flowstate/
 
 ---
 
-### 0.1 — Replace the mock DB with real PostgreSQL
+### 0.1 — Harden and extend the existing PostgreSQL schema
 
-`backend/db.py` is currently a mock dict. Replace it with a real SQLAlchemy schema.
+The SQLAlchemy + Alembic foundation is already in place under `flowstate/infra/` and `alembic/`.
+Extend the schema incrementally and keep migrations clean and reproducible.
 
 **Tables to define:**
 
@@ -174,7 +269,7 @@ class ConnectorRun(Base):
     result = Column(Text)
 ```
 
-Wire up Alembic:
+Alembic workflow:
 
 ```bash
 alembic revision --autogenerate -m "initial schema"
@@ -931,7 +1026,7 @@ ollama pull mistral
 uvicorn backend.main:app --reload
 
 # Start worker
-python -m flowstate.worker
+python -m backend.worker
 
 # Frontend
 cd frontend && npm install && npm run dev

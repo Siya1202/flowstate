@@ -104,6 +104,10 @@ class SlackConnector(BaseConnector):
 
 	def _build_message(self, task: Any, event: GraphEvent) -> dict:
 		"""Build Slack message payload."""
+		draft_text = event.metadata.get("draft")
+		if draft_text:
+			return {"text": draft_text}
+
 		if event.event_type == "task_blocked":
 			blocker_title = event.metadata.get("blocker_title", "Unknown task")
 			blocker_owner = event.metadata.get("blocker_owner", "Unknown")

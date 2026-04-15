@@ -2,16 +2,29 @@ import json
 import os
 import time
 import uuid
-from typing import Optional
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
 
 import redis
 from redis import exceptions as redis_exceptions
 
-from automation.trigger import trigger_approved_tasks
+from flowstate.connectors import (
+    GoogleCalendarConnector,
+    GraphEvent,
+    SlackConnector,
+    WebhookConnector,
+    WhatsAppConnector,
+    dispatch_event,
+    get_connectors_for_team,
+    register_connector,
+)
+from flowstate.drafting import generate_draft
 from flowstate.enrichment.pipeline import enrich_task
 from flowstate.extraction.extractor import extract_tasks
 from flowstate.graph.dag import FlowstateDAG
-from flowstate.graph.intelligence import get_bottlenecks, get_critical_path
+from flowstate.graph.intelligence import get_bottlenecks, get_critical_path, get_stale_blockers
 from flowstate.governance.router import route_tasks
 from flowstate.ml import model
 from flowstate.models import Task
@@ -24,6 +37,15 @@ SERVICE_RETRY_SECONDS = int(os.getenv("WORKER_SERVICE_RETRY_SECONDS", "3"))
 MAX_SERVICE_RETRIES = int(os.getenv("WORKER_MAX_SERVICE_RETRIES", "3"))
 
 _model_warmed = False
+
+
+@dataclass
+class ConnectorTaskView:
+    id: str
+    title: str
+    owner: Optional[str] = None
+    deadline: Optional[Any] = None
+    status: str = "open"
 
 
 def get_redis_client() -> redis.Redis:
@@ -118,8 +140,177 @@ def merge_into_persistent_dag(team_id: str, tasks: list[Task]):
         "created_dependencies": len(merge_result.created_dependency_ids),
     }
 
+
+def _parse_deadline(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(raw)
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except ValueError:
+            return None
+    return None
+
+
+def _ensure_connectors_registered(team_id: str):
+    if get_connectors_for_team(team_id):
+        return
+
+    # Register only configured connectors to avoid noisy auth/runtime failures.
+    if os.getenv("ENABLE_GOOGLE_CALENDAR_CONNECTOR", "true").lower() == "true":
+        register_connector(GoogleCalendarConnector(team_id=team_id, credentials={}))
+
+    slack_webhook = os.getenv("SLACK_WEBHOOK_URL")
+    if slack_webhook:
+        register_connector(
+            SlackConnector(
+                team_id=team_id,
+                credentials={"webhook_url": slack_webhook},
+            )
+        )
+
+    webhook_urls = [url.strip() for url in os.getenv("FLOWSTATE_WEBHOOK_URLS", "").split(",") if url.strip()]
+    if webhook_urls:
+        register_connector(
+            WebhookConnector(
+                team_id=team_id,
+                credentials={"webhook_urls": webhook_urls},
+            )
+        )
+
+    whatsapp_phone_id = os.getenv("WHATSAPP_PHONE_NUMBER_ID")
+    whatsapp_access_token = os.getenv("WHATSAPP_ACCESS_TOKEN")
+    if whatsapp_phone_id and whatsapp_access_token:
+        register_connector(
+            WhatsAppConnector(
+                team_id=team_id,
+                credentials={
+                    "phone_number_id": whatsapp_phone_id,
+                    "access_token": whatsapp_access_token,
+                },
+            )
+        )
+
+
+def _emit_connector_events(team_id: str, dag: FlowstateDAG):
+    _ensure_connectors_registered(team_id)
+    connector_count = len(get_connectors_for_team(team_id))
+    if connector_count == 0:
+        print("[worker] No connectors configured; skipping connector dispatch")
+        return
+
+    now = datetime.now(timezone.utc)
+    dispatched = 0
+
+    for node_id, data in dag.G.nodes(data=True):
+        task_view = ConnectorTaskView(
+            id=str(node_id),
+            title=data.get("title") or str(node_id),
+            owner=data.get("owner"),
+            deadline=data.get("deadline"),
+            status=data.get("status") or "open",
+        )
+
+        deadline_dt = _parse_deadline(task_view.deadline)
+        if deadline_dt and task_view.status != "done":
+            hours_remaining = int((deadline_dt - now).total_seconds() // 3600)
+            if 0 <= hours_remaining <= 24:
+                event = GraphEvent(
+                    event_type="deadline_approaching",
+                    task_id=task_view.id,
+                    team_id=team_id,
+                    metadata={
+                        "hours_remaining": hours_remaining,
+                        "status": task_view.status,
+                    },
+                )
+                draft = generate_draft(task_view, event, "deadline_reminder")
+                event.metadata["draft"] = draft.body
+                dispatch_event(task_view, event)
+                dispatched += 1
+
+        for blocker_id in dag.G.predecessors(node_id):
+            blocker_data = dag.G.nodes[blocker_id]
+            blocker_status = blocker_data.get("status") or "open"
+            if blocker_status == "done":
+                continue
+
+            blocked_event = GraphEvent(
+                event_type="task_blocked",
+                task_id=task_view.id,
+                team_id=team_id,
+                metadata={
+                    "blocker_id": str(blocker_id),
+                    "blocker_title": blocker_data.get("title") or str(blocker_id),
+                    "blocker_owner": blocker_data.get("owner") or "unknown",
+                    "status": task_view.status,
+                },
+            )
+            dispatch_event(task_view, blocked_event)
+            dispatched += 1
+
+    stale_ids = set(get_stale_blockers(dag, stale_days=3))
+    for stale_id in stale_ids:
+        stale_data = dag.G.nodes[stale_id]
+        stale_task = ConnectorTaskView(
+            id=str(stale_id),
+            title=stale_data.get("title") or str(stale_id),
+            owner=stale_data.get("owner"),
+            deadline=stale_data.get("deadline"),
+            status=stale_data.get("status") or "open",
+        )
+        nudge_event = GraphEvent(
+            event_type="nudge",
+            task_id=stale_task.id,
+            team_id=team_id,
+            metadata={
+                "blocked_by": stale_task.title,
+                "blocked_by_name": stale_task.owner or "owner",
+                "days_stuck": 3,
+                "status": stale_task.status,
+            },
+        )
+        draft = generate_draft(stale_task, nudge_event, "nudge")
+        nudge_event.metadata["draft"] = draft.body
+        dispatch_event(stale_task, nudge_event)
+        dispatched += 1
+
+    print(f"[worker] Connector dispatch complete. Connectors={connector_count}, events={dispatched}")
+
+
+def _normalize_job_payload(job: dict) -> tuple[list[Any], str]:
+    source = "file_job"
+    if "content" in job:
+        chunks = normalize(
+            content=job.get("content", ""),
+            source=job.get("source"),
+            metadata=job.get("metadata") or {},
+        )
+        source = str(job.get("source") or "raw_event")
+        return chunks, source
+
+    file_path = job.get("file_path")
+    file_type = job.get("file_type")
+    if not file_type and file_path:
+        file_type = Path(file_path).suffix.lower()
+
+    chunks = normalize(file_path, file_type)
+    return chunks, source
+
 def process_job(job: dict):
-    print(f"\nProcessing job: {job['job_id']}")
+    print(f"\nProcessing job: {job.get('job_id', job.get('external_id', 'raw_event'))}")
 
     if not ensure_model_warm():
         print("[worker] Skipping job because model service is unavailable.")
@@ -129,11 +320,11 @@ def process_job(job: dict):
     print("Phase 2: Normalizing...")
     _t0 = time.perf_counter()
     try:
-        chunks = normalize(job["file_path"], job["file_type"])
+        chunks, source_name = _normalize_job_payload(job)
     except Exception as exc:
         print(f"[worker] Normalization failed: {exc}")
         return []
-    print(f"Phase 2 done in {time.perf_counter() - _t0:.2f}s — got {len(chunks)} chunks")
+    print(f"Phase 2 done in {time.perf_counter() - _t0:.2f}s — got {len(chunks)} chunks from {source_name}")
 
     # Phase 3 — Extract tasks
     print("Phase 3: Sending to Mistral... (this may take 1-2 mins)")
@@ -160,7 +351,7 @@ def process_job(job: dict):
             owner=owner,
             deadline=task.deadline,
             confidence=task.confidence,
-            source_ref=job["filename"],
+            source_ref=job.get("filename") or job.get("external_id") or source_name,
             team_id=job["team_id"],
             dependencies=task.dependencies if task.dependencies else []
         )
@@ -214,10 +405,9 @@ def process_job(job: dict):
     for t in routing['review']:
         print(f"    - {t}")
 
-    # Phase 8 — Automation
-    print("Phase 8: Triggering calendar events...")
-    approved_tasks = [t for t in enriched_tasks if t.deadline]
-    trigger_approved_tasks(approved_tasks)
+    # Phase 8 — Connector dispatch
+    print("Phase 8: Dispatching graph events to connectors...")
+    _emit_connector_events(job["team_id"], dag)
 
     print("\n✅ Job complete!")
     return enriched_tasks
@@ -233,12 +423,25 @@ def run_worker():
                 r.ping()
                 print("[worker] Connected to Redis")
 
-            item = r.brpop("flowstate:jobs", timeout=15)
+            item = r.brpop(["flowstate:jobs", "flowstate:raw_events"], timeout=15)
             if not item:
                 continue
 
-            _, data = item
+            queue_name_raw, data = item
+            queue_name = queue_name_raw.decode() if isinstance(queue_name_raw, bytes) else str(queue_name_raw)
             job = json.loads(data)
+
+            if queue_name.endswith("raw_events"):
+                # Convert watcher raw events into the existing worker payload contract.
+                job = {
+                    "job_id": job.get("external_id") or str(uuid.uuid4()),
+                    "team_id": job.get("team_id", "team_alpha"),
+                    "source": job.get("source", "watcher"),
+                    "content": job.get("content", ""),
+                    "metadata": job.get("metadata") or {},
+                    "external_id": job.get("external_id"),
+                }
+
             process_job(job)
         except (redis_exceptions.ConnectionError, redis_exceptions.TimeoutError) as exc:
             print(f"[worker] Redis unavailable: {exc}. Retrying in {REDIS_RETRY_SECONDS}s...")
