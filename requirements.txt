@@ -142,3 +142,21 @@ google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
 pydantic-settings
+
+# -----------------------------------------------------------------------
+# Phase 2 — Real-time Connector Layer (OpenClaw)
+# -----------------------------------------------------------------------
+
+# httpx — already present above; used by OpenClawClient for all HTTP calls
+# to the OpenClaw REST API. Async-capable but used in sync mode inside
+# background threads to avoid blocking the FastAPI event loop.
+# Version pinned above: httpx==0.28.1
+
+# python-dotenv — already present above via python-dotenv==1.1.0; loads
+# OPENCLAW_API_BASE, OPENCLAW_API_KEY, REDIS_URL, etc. from .env files.
+
+# anyio — already present above; required by FastAPI's lifespan context
+# manager and asyncio.to_thread() used in GmailConnector.run_polling_loop().
+
+# tenacity — already present above; can be used to add retry decorators
+# to OpenClawClient methods for more advanced backoff strategies.

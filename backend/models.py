@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
+from dataclasses import dataclass, field
 
 class Chunk(BaseModel):
     """Represents a chunk of normalized text with speaker metadata."""
@@ -38,3 +39,15 @@ class Task(BaseModel):
             "team_id": self.team_id,
             "duplicate_candidates": self.duplicate_candidates,
         }
+
+@dataclass
+class Event:
+    """Represents a real-time event received from an external connector (Gmail, Slack, Discord, etc.)."""
+    id: str
+    type: str          # "email_received", "slack_message", "discord_message", "whatsapp_message"
+    source: str        # "gmail", "slack", "discord"
+    content: str
+    participants: List[str]
+    timestamp: datetime
+    team_id: str
+    raw: Dict[str, Any]  # original payload preserved for auditing / replay
